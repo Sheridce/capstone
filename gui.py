@@ -3,6 +3,10 @@ from tkinter import scrolledtext, messagebox
 import transcribe
 import threading
 import whisper
+import json
+import os
+
+CONFIG_FILE = "config.json"
 
 class LineNumberedText(tk.Frame):
     def __init__(self, master, *args, **kwargs):
@@ -66,29 +70,74 @@ class SpeechToCodeApp:
         self.transcription_thread = None
         self.stop_event = threading.Event()
         
-        # Add whisper model variable
         self.whisper_model = None
         self.whisper_model_name = tk.StringVar()
         self.whisper_model_name.set("turbo")
         self.whisper_model_options = ["tiny", "base", "small", "medium", "large", "turbo"]
         
+        self.load_config()
+        
         self.create_control_panel()
         self.create_text_area()
         
-        # Bind text modifications to automatically save content
         self.text_area.text.bind('<<Modified>>', self.on_text_change)
         
-        # Load whisper model in a separate thread
         self.load_model_thread = threading.Thread(target=self.load_whisper_model)
         self.load_model_thread.daemon = True
         self.load_model_thread.start()
+    
+    def load_config(self):
+        """Load configuration from file if it exists"""
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                
+                if 'api_key' in config:
+                    self.api_key = config['api_key']
+                
+                if 'model' in config:
+                    self.selected_option.set(config['model'])
+                    self.model = config['model']
+                
+                if 'language' in config:
+                    self.language = config['language']
+                
+                if 'whisper_model' in config:
+                    self.whisper_model_name.set(config['whisper_model'])
+                
+                print("Configuration loaded successfully")
+            except Exception as e:
+                print(f"Error loading configuration: {e}")
+    
+    def save_config(self):
+        """Save current configuration to file"""
+        config = {
+            'api_key': self.api_key,
+            'model': self.model,
+            'language': self.language,
+            'whisper_model': self.whisper_model_name.get()
+        }
+        
+        try:
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f)
+            
+            self.status_label.config(text="Settings saved", fg="blue")
+            self.window.after(1000, lambda: self.status_label.config(
+                text="Not Recording" if not self.is_recording else "Recording...",
+                fg="red" if not self.is_recording else "green"
+            ))
+            
+        except Exception as e:
+            print(f"Error saving configuration: {e}")
+            messagebox.showerror("Save Error", f"Could not save settings: {e}")
     
     def on_text_change(self, event=None):
         """Automatically save text content whenever it changes"""
         self.transcription_text = self.text_area.get_text()
         self.text_area.text.edit_modified(False)
         
-        # Briefly show save status
         self.status_label.config(text="Text Auto-Saved", fg="blue")
         self.window.after(1000, lambda: self.status_label.config(
             text="Not Recording" if not self.is_recording else "Recording...",
@@ -107,7 +156,6 @@ class SpeechToCodeApp:
             self.window.after(0, lambda: self.status_label.config(
                 text=f"{model_name} model loaded successfully", fg="green"))
             
-            # Reset status after 3 seconds
             self.window.after(3000, lambda: self.status_label.config(
                 text="Not Recording", fg="red"))
             
@@ -127,6 +175,7 @@ class SpeechToCodeApp:
         self.load_model_thread = threading.Thread(target=self.load_whisper_model)
         self.load_model_thread.daemon = True
         self.load_model_thread.start()
+        self.save_config()
         
     def create_control_panel(self):
         control_frame = tk.Frame(self.window)
@@ -141,10 +190,9 @@ class SpeechToCodeApp:
         dropdown.pack(side=tk.LEFT, padx=5)
         button = tk.Button(model_frame, text="Confirm Model", command=self.show_model)
         button.pack(side=tk.LEFT, padx=5)
-        self.model_label = tk.Label(model_frame, text="")
+        self.model_label = tk.Label(model_frame, text=f"Selected: {self.model}" if self.model else "")
         self.model_label.pack(side=tk.LEFT, padx=10)
         
-        # Add whisper model selection
         whisper_frame = tk.Frame(control_frame)
         whisper_frame.pack(fill=tk.X, pady=5)
         
@@ -159,11 +207,13 @@ class SpeechToCodeApp:
         key_frame.pack(fill=tk.X, pady=5)
         
         tk.Label(key_frame, text="API Key:").pack(side=tk.LEFT)
-        self.key_textbox = tk.Entry(key_frame, width=40)
+        self.key_textbox = tk.Entry(key_frame, width=40, show="*")
+        if self.api_key:
+            self.key_textbox.insert(0, self.api_key)
         self.key_textbox.pack(side=tk.LEFT, padx=5)
         key_button = tk.Button(key_frame, text="Confirm Key", command=self.save_key)
         key_button.pack(side=tk.LEFT, padx=5)
-        self.key_label = tk.Label(key_frame, text="")
+        self.key_label = tk.Label(key_frame, text=f"API Key saved")
         self.key_label.pack(side=tk.LEFT, padx=10)
         
         lang_frame = tk.Frame(control_frame)
@@ -171,10 +221,12 @@ class SpeechToCodeApp:
         
         tk.Label(lang_frame, text="Language:").pack(side=tk.LEFT)
         self.lang_textbox = tk.Entry(lang_frame, width=40)
+        if self.language:
+            self.lang_textbox.insert(0, self.language)
         self.lang_textbox.pack(side=tk.LEFT, padx=5)
         lang_button = tk.Button(lang_frame, text="Confirm Language", command=self.save_language)
         lang_button.pack(side=tk.LEFT, padx=5)
-        self.lang_label = tk.Label(lang_frame, text="")
+        self.lang_label = tk.Label(lang_frame, text=f"Language: {self.language}" if self.language else "")
         self.lang_label.pack(side=tk.LEFT, padx=10)
         
         button_frame = tk.Frame(control_frame)
@@ -190,7 +242,10 @@ class SpeechToCodeApp:
                                    padx=10, pady=5, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=5)
         
-        # Remove the "Save Text" button since saving is now automatic
+        save_settings_button = tk.Button(button_frame, text="Save Settings", 
+                                       command=self.save_config, bg="#2196F3", fg="white",
+                                       padx=10, pady=5)
+        save_settings_button.pack(side=tk.LEFT, padx=5)
         
         self.status_label = tk.Label(button_frame, text="Loading model...", fg="blue")
         self.status_label.pack(side=tk.LEFT, padx=10)
@@ -204,20 +259,23 @@ class SpeechToCodeApp:
     
     def option_changed(self, event):
         self.model = self.selected_option.get()
+        self.save_config()
     
     def show_model(self):
         self.model_label.config(text=f"Selected: {self.model}")
+        self.save_config()
     
     def save_key(self):
         self.api_key = self.key_textbox.get()
-        self.key_label.config(text=f"API Key: {self.api_key[:5]}..." if self.api_key else "")
+        self.key_label.config(text=f"API Key saved")
+        self.save_config()
     
     def save_language(self):
         self.language = self.lang_textbox.get()
         self.lang_label.config(text=f"Language: {self.language}")
+        self.save_config()
     
     def start_recording(self):
-        # Check if model is loaded
         if self.whisper_model is None:
             messagebox.showwarning("Warning", "Whisper model is not loaded yet")
             return
