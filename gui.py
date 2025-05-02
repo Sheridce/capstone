@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox
 import transcribe
 import threading
+import whisper
 
 class LineNumberedText(tk.Frame):
     def __init__(self, master, *args, **kwargs):
@@ -28,7 +29,7 @@ class LineNumberedText(tk.Frame):
         
         num_lines = self.text.get('1.0', tk.END).count('\n')
         
-        line_numbers_str = '\n'.join(str(i) for i in range(0, num_lines))
+        line_numbers_str = '\n'.join(str(i) for i in range(1, num_lines))
         self.line_numbers.insert('1.0', line_numbers_str)
         
         self.line_numbers.config(state='disabled')
@@ -65,14 +66,67 @@ class SpeechToCodeApp:
         self.transcription_thread = None
         self.stop_event = threading.Event()
         
+        # Add whisper model variable
+        self.whisper_model = None
+        self.whisper_model_name = tk.StringVar()
+        self.whisper_model_name.set("turbo")
+        self.whisper_model_options = ["tiny", "base", "small", "medium", "large", "turbo"]
+        
         self.create_control_panel()
         self.create_text_area()
         
+        # Bind text modifications to automatically save content
         self.text_area.text.bind('<<Modified>>', self.on_text_change)
+        
+        # Load whisper model in a separate thread
+        self.load_model_thread = threading.Thread(target=self.load_whisper_model)
+        self.load_model_thread.daemon = True
+        self.load_model_thread.start()
     
     def on_text_change(self, event=None):
+        """Automatically save text content whenever it changes"""
         self.transcription_text = self.text_area.get_text()
         self.text_area.text.edit_modified(False)
+        
+        # Briefly show save status
+        self.status_label.config(text="Text Auto-Saved", fg="blue")
+        self.window.after(1000, lambda: self.status_label.config(
+            text="Not Recording" if not self.is_recording else "Recording...",
+            fg="red" if not self.is_recording else "green"
+        ))
+    
+    def load_whisper_model(self):
+        """Load the whisper model in a background thread"""
+        try:
+            model_name = self.whisper_model_name.get()
+            self.window.after(0, lambda: self.status_label.config(
+                text=f"Loading {model_name} model...", fg="blue"))
+            
+            self.whisper_model = whisper.load_model(model_name)
+            
+            self.window.after(0, lambda: self.status_label.config(
+                text=f"{model_name} model loaded successfully", fg="green"))
+            
+            # Reset status after 3 seconds
+            self.window.after(3000, lambda: self.status_label.config(
+                text="Not Recording", fg="red"))
+            
+        except Exception as e:
+            error_msg = f"Error loading model: {e}"
+            print(error_msg)
+            self.window.after(0, lambda: messagebox.showerror("Model Load Error", error_msg))
+            self.window.after(0, lambda: self.status_label.config(
+                text="Model load failed", fg="red"))
+    
+    def change_whisper_model(self):
+        """Change the whisper model"""
+        if self.is_recording:
+            messagebox.showwarning("Warning", "Cannot change model while recording")
+            return
+        
+        self.load_model_thread = threading.Thread(target=self.load_whisper_model)
+        self.load_model_thread.daemon = True
+        self.load_model_thread.start()
         
     def create_control_panel(self):
         control_frame = tk.Frame(self.window)
@@ -81,7 +135,7 @@ class SpeechToCodeApp:
         model_frame = tk.Frame(control_frame)
         model_frame.pack(fill=tk.X, pady=5)
         
-        tk.Label(model_frame, text="Model:").pack(side=tk.LEFT)
+        tk.Label(model_frame, text="LLM Model:").pack(side=tk.LEFT)
         dropdown = tk.OptionMenu(model_frame, self.selected_option, *self.options, 
                                 command=self.option_changed)
         dropdown.pack(side=tk.LEFT, padx=5)
@@ -89,6 +143,17 @@ class SpeechToCodeApp:
         button.pack(side=tk.LEFT, padx=5)
         self.model_label = tk.Label(model_frame, text="")
         self.model_label.pack(side=tk.LEFT, padx=10)
+        
+        # Add whisper model selection
+        whisper_frame = tk.Frame(control_frame)
+        whisper_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(whisper_frame, text="Whisper Model:").pack(side=tk.LEFT)
+        whisper_dropdown = tk.OptionMenu(whisper_frame, self.whisper_model_name, 
+                                        *self.whisper_model_options)
+        whisper_dropdown.pack(side=tk.LEFT, padx=5)
+        whisper_button = tk.Button(whisper_frame, text="Load Model", command=self.change_whisper_model)
+        whisper_button.pack(side=tk.LEFT, padx=5)
         
         key_frame = tk.Frame(control_frame)
         key_frame.pack(fill=tk.X, pady=5)
@@ -125,19 +190,14 @@ class SpeechToCodeApp:
                                    padx=10, pady=5, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=5)
         
-        self.save_text_button = tk.Button(button_frame, text="Save Text", 
-                                        command=self.save_text_content, bg="#2196F3", fg="white",
-                                        padx=10, pady=5)
-        self.save_text_button.pack(side=tk.LEFT, padx=5)
+        # Remove the "Save Text" button since saving is now automatic
         
-        self.status_label = tk.Label(button_frame, text="Not Recording", fg="red")
+        self.status_label = tk.Label(button_frame, text="Loading model...", fg="blue")
         self.status_label.pack(side=tk.LEFT, padx=10)
     
     def create_text_area(self):
         text_frame = tk.Frame(self.window)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        tk.Label(text_frame, text="Transcription Results:").pack(anchor=tk.W)
         
         self.text_area = LineNumberedText(text_frame)
         self.text_area.pack(fill=tk.BOTH, expand=True)
@@ -156,17 +216,12 @@ class SpeechToCodeApp:
         self.language = self.lang_textbox.get()
         self.lang_label.config(text=f"Language: {self.language}")
     
-    def save_text_content(self):
-        self.transcription_text = self.text_area.get_text()
-        print(f"Text saved to variable: {self.transcription_text[:50]}...")
-        
-        self.status_label.config(text="Text Saved!", fg="blue")
-        self.window.after(2000, lambda: self.status_label.config(
-            text="Not Recording" if not self.is_recording else "Recording...",
-            fg="red" if not self.is_recording else "green"
-        ))
-    
     def start_recording(self):
+        # Check if model is loaded
+        if self.whisper_model is None:
+            messagebox.showwarning("Warning", "Whisper model is not loaded yet")
+            return
+        
         self.is_recording = True
         
         self.record_button.config(state=tk.DISABLED)
@@ -193,7 +248,8 @@ class SpeechToCodeApp:
     
     def run_transcription(self):
         result = transcribe.record_and_transcribe(
-            self.transcription_text, self.api_key, self.model, self.language, self.stop_event
+            self.transcription_text, self.api_key, self.model, 
+            self.language, self.stop_event, self.whisper_model
         )
         
         if not result:
@@ -201,7 +257,6 @@ class SpeechToCodeApp:
         
         self.window.after(0, lambda: self.text_area.set_text(result))
         
-        self.transcription_text = result
         
         self.window.after(0, lambda: self.record_button.config(state=tk.NORMAL))
         self.window.after(0, lambda: self.stop_button.config(state=tk.DISABLED))
