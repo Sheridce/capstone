@@ -13,7 +13,7 @@ def send_text(text, model, key, language):
     if model == "Claude":
         text = send_to_claude(text, key, language, sys_prompt)
     if model == "Gemini":
-        text = send_to_gemini(text, key, language, sys_prompt)
+        text = send_to_gemini(text, key, language,)
     return (text)
 
 def send_to_claude(text, key, language, sys_prompt):
