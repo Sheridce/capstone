@@ -2,13 +2,10 @@ import anthropic
 import os
 import google.generativeai as genai
 
-#key = "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"
-#key= "AIzaSyAJc7Q6EV1aIFIvMe0ACCYzX5aOBUo58YI"
-
 
 
 def send_text(text, model, key, language):
-    sys_prompt = "write a template for the following message, do not add any comments, commentary, or other text other than the code. Your response should be as simple as possible, using as few characters as possible. Assume you are writing " + language + " code. Messages before the code such as \"Sure, here is a X\", or \"Here's a X\" are considered unnecessary text"
+    sys_prompt = "write a template for the following message, do not add any comments, commentary, or other text other than the code. Your response should be as simple as possible, using as few characters as possible. Assume you are writing " + language + " code. Messages before the code such as \"Sure, here is a X\", or \"Here's a X\" are considered unnecessary text. If provided codee in prompt, do not delete any code unless instructed otherwise"
 
     if model == "Claude":
         text = send_to_claude(text, key, language, sys_prompt)
