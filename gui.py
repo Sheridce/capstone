@@ -60,7 +60,7 @@ class SpeechToCodeApp:
         self.selected_option = tk.StringVar()
         self.selected_option.set("Claude")
         self.model = self.selected_option.get()
-        self.options = ["Claude", "Gemini", "local"]
+        self.options = ["Claude", "Gemma"]
         self.api_key = ""
         self.language = ""
         
