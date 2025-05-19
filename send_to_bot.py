@@ -2,8 +2,6 @@ import anthropic
 import os
 import google.generativeai as genai
 
-#key = "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"
-#key= "AIzaSyAJc7Q6EV1aIFIvMe0ACCYzX5aOBUo58YI"
 
 
 
