@@ -2,8 +2,6 @@ import anthropic
 import os
 import google.generativeai as genai
 
-#key = "REDACTED"
-#key= "REDACTED"
 
 
 
