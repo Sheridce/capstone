@@ -1,4 +1,0 @@
-capstone idea
-
-send stt output to chatgpt
-interactive programming through speech
